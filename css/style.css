@@ -7,7 +7,7 @@
   color: #fff;
 }
 body {
-  font-family: 'Source Sans Pro', 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Times New Roman';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: none;
@@ -504,7 +504,7 @@ h2.article-head {
 .article-summary pre,
 .markdown-content code,
 .article-summary code {
-  font-family: 'Roboto Mono', Monaco, courier, monospace;
+  font-family: 'Courier New';
   font-size: 13px;
 }
 @media screen and (max-width: 480px) {
