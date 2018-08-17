@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport">
+  <meta name="description" content="ProjectMoonPwn">
+  <meta name="keyword" content="hexo-theme, vuejs">
+  
+    <link rel="shortcut icon" href="/css/images/logo.png">
+  
+  <title>
+    
+      Edge InlineArrayPush Remote Code Execution | Project Moon
+    
+  </title>
+  <link href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="//cdn.bootcss.com/nprogress/0.2.0/nprogress.min.css" rel="stylesheet">
+  <link href="//cdn.bootcss.com/highlight.js/9.12.0/styles/tomorrow.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/plugins/gitment.css">
+  <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+  <script src="//cdn.bootcss.com/geopattern/1.2.3/js/geopattern.min.js"></script>
+  <script src="//cdn.bootcss.com/nprogress/0.2.0/nprogress.min.js"></script>
+  <script src="/js/qrious.js"></script>
+<script src="/js/gitment.js"></script>
+  
+  
+    <!-- MathJax support START -->
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+        tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      });
+    </script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax(), i;
+        for (i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+        }
+      });
+    </script>
+    <script type="text/javascript" src="//cdn.bootcss.com/mathjax/2.7.1/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <!-- MathJax support END -->
+  
+
+
+</head>
+<div class="wechat-share">
+  <img src="/css/images/logo.png" />
+</div>
+
+  <body>
+    <header class="header fixed-header">
+  <div class="header-container">
+    <a class="home-link" href="/">
+      <div class="logo"></div>
+      <span>Project Moon</span>
+    </a>
+    <ul class="right-list">
+      
+        <li class="list-item">
+          
+            <a href="/" class="item-link">Home</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/archives/" class="item-link">Archives</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/about/" class="item-link">About</a>
+          
+        </li>
+      
+    </ul>
+    <div class="menu">
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </div>
+    <div class="menu-mask">
+      <ul class="menu-list">
+        
+          <li class="menu-item">
+            
+              <a href="/" class="menu-link">Home</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/archives/" class="menu-link">Archives</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/about/" class="menu-link">About</a>
+            
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</header>
+
+    <div id="article-banner">
+  <h2>Edge InlineArrayPush Remote Code Execution</h2>
+  <p class="post-date">2018-08-17</p>
+  <div class="arrow-down">
+    <a href="javascript:;"></a>
+  </div>
+</div>
+<main class="app-body flex-box">
+  <!-- Article START -->
+  <article class="post-article">
+    <section class="markdown-content"><p>Note:<br>Sorry for my poor English, to express exactly what I mean and avoid misunderstand,I need to write in Chinese.If someone want to translate to English, feel free to do it and please add our URL.<br>Our blogs will focus on browsers security, sandbox escape, kernel security and Web security.If you feel these stuffs are helpful for you, please RT and let others know. This is the power to continue and translate it to English.<br>We can’t guarantee how long will post a blog, but we can promise the quality of content and has NOT been public before.</p>
+<p>Qixun Zhao(aka @S0rryMybad &amp;&amp; 大宝) of Qihoo 360 Vulcan Team</p>
+<h3 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h3><p>回顾之前Edge出现的漏洞,在root cause属于回调的问题当中(不一定有用到回调的root cause就是回调的问题),虽然出现的漏洞有很多个,但是无非可以分为三种情况:<br><br></p>
+<p>第一种,GlobOpt阶段的bailoutKind没有加入或者处理不当,对应的一个例子: <a href="https://github.com/Microsoft/ChakraCore/commit/38a37acb69805c9e1197a58d4ab5fa84e1dfbacd" target="_blank" rel="noopener">CVE-2017-11837</a><br>第二种,Lower阶段新加入的指令没有update GolbOpt阶段的bailoutkind,对应的一个例子: <a href="https://github.com/Microsoft/ChakraCore/commit/9326bda18a18a810b59f0ef39c0eabc1c8b6406f" target="_blank" rel="noopener">CVE-2017-8601</a><br>最后一种是进行回调的时候没有update implicitCallFlags,导致GlobOpt和Lower阶段的工作全部白费:CVE-2017-11895<br><br></p>
+<p>前段时间一直在学习与研究一些新的方向iOS的越狱(以后有机会也会写一系列关于越狱的文章),没有怎么关注JIT的代码.mosec之后回来看一看JIT相关的代码,发现漏洞可能没以前好找了,但是也不是没有.在最近我报告了一系列的Edge 漏洞给微软,在此后的一段时间我将会陆续分享这一系列的关于JIT的与以往不太一样的漏洞, 这些漏洞品相都是相当好, 并且最后能RCE的.<br><br></p>
+<p>作为我一系列Edge JIT 漏洞的第一篇，这次我选择的是原理最简单的一个洞作为分享(属于单个opcode的问题)，当然也因为漏洞修补的时间刚好.在前几天的微软补丁中,修复了我两个Edge的漏洞,其中这篇就是CVE-2018-8372,另外一个并没有assign CVE,但是在代码中已经修复,在以后的文章中会提到.<br><br><br>这一系列的文章需要读者对js或者浏览器漏洞有一定的研究基础,因为我们只会关注于JIT本身,而不会过多关注js和浏览器的一些基础概念.<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/1.png"><br><br></p>
+<h3 id="JIT优化eliminate-duplicate-check"><a href="#JIT优化eliminate-duplicate-check" class="headerlink" title="JIT优化eliminate duplicate check"></a>JIT优化eliminate duplicate check</h3><p>试想如下一段JS代码JIT会怎么处理:<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">Function</span> jit()&#123;</span><br><span class="line">    arr[<span class="number">1</span>] = <span class="number">1.1</span>;</span><br><span class="line">    arr[<span class="number">2</span>] = <span class="number">2.2</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>我们都知道js是一门动态语言,所以一开始肯定是先检查arr的类型,然后再进行赋值,但是由于opcode的原子性,在第二行语句的时候假如没有优化,肯定也会再次检查一次arr的类型.但是聪明的读者肯定也会发现,第二行的检查是没有必要的,刚刚才检查过,为啥又要检查一次啊,cpu闲的蛋疼啊,而且Edge还想你设置成默认浏览器呢,还要比V8快呢,怎么能这么多冗余的指令呢?于是这时候chakraCore就要引入JIT的其中一个优化措施,消除冗余的检查.下面我们看看最终经过GlobOpt阶段的IR是怎样的:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/2.png"><br>我们可以清楚看到,第二句JS代码没有|BailOnNotArray|,也就是没有了类型的检查.<br>但是也不是什么时候也能消除检查的,在中间存在回调的时候就不能消除检查:<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Arr[<span class="number">1</span>] = <span class="number">1.1</span>;</span><br><span class="line"><span class="built_in">Object</span>.property;  =&gt; callback</span><br><span class="line">Arr[<span class="number">1</span>] = <span class="number">2.2</span>;</span><br></pre></td></tr></table></figure></p>
+<p>这里明显中间有一个回调,所以我们是需要把chakra中已经保存的type信息去掉,这时候chackaCore就引入了一个kill机制,其中一个相关的处理代码是在|GlobOpt::CheckJsArrayKills|.在审阅这个函数的时候,InlineArrayPush opcode引起了我的注意:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/3.png"></p>
+<p>代码注释已经说得很清楚,假如array的type与element type一致,就不要把type信息去掉,这是一个比较激进的优化,而InlineArrayPush opcod通过调用Array.prototype.push生成的.简单来说就是,假如生成这么一段代码:</p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">arr[<span class="number">1</span>] = <span class="number">2.2</span>;</span><br><span class="line">arr.push(value);</span><br><span class="line">arr[<span class="number">1</span>] = <span class="number">3.3</span>;</span><br></pre></td></tr></table></figure>
+<p>假如arr的type信息是float array,value的type信息是float,前面保存的arr type信息就不会被kill.换言之,在|arr[1] = 3.3;|中就不会生成|baitOnNotArray| IR,没有了type类型的检查代码.是的,这样就非常快了,比v8还快,但是安全吗?需要注意的是,在push里面不能触发回调,因为InlineArrayPush会生成|BailOutOnImplicitCallsPreOp|,如果触发回调是会bailout的.</p>
+<p>接下来要思考的问题就非常直观了,将一个float数值push到一个float array里面,在不触发回调的前提下,真的不会改变array的类型吗???<br><br></p>
+<h3 id="JavaScript-undefined"><a href="#JavaScript-undefined" class="headerlink" title="JavaScript undefined"></a>JavaScript undefined</h3><p>在JS里面,有一个特殊的值undefined,表示这个变量未初始化.试想这样一个数组|arr = [1.1,,3.3];|,不考虑prototype的情况下,当我们访问arr[1]的时候就会返回一个值undefined.这里就有一个疑问了,这个undefined的值在内存里究竟这么表示,所以我们先看一下这个arr的内存表示:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/4.png"></p>
+<p>可以看到,arr[1]在内存的值是0x8000000280000002,这时候敏锐的读者可能就会想到了,这个值是在浮点数的表示范围内啊(详情查看IEEE 754),通过转换,我们可以知道这个值对应浮点数-5.3049894784e-314.所以为了区分-5.3049894784e-314和undefined,chakraCore在float Array的|setItem|有一个特殊的处理:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/5.png"></p>
+<p>当把这个值传入setItem,就会进行数组的转换,变成var array,而在push函数里面,是通过调用setItem函数处理的.所以回到最初的问题:|将一个float数值push到一个float array里面,在不触发回调的前提下,真的不会改变array的类型吗???|.答案是否定的.</p>
+<h3 id="Please-DON’T-kill-my-NativeArrays-gt-lt"><a href="#Please-DON’T-kill-my-NativeArrays-gt-lt" class="headerlink" title="Please DON’T kill my NativeArrays  &gt;_&lt;"></a>Please DON’T kill my NativeArrays  &gt;_&lt;</h3><p>但是,通过如下pattern,我发现我的array type信息还是被kill了,即使我保证了arr的type信息是float array,value的type信息是一个float:<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Arr[<span class="number">1</span>] = <span class="number">1.1</span>;</span><br><span class="line">Arr.push(value);</span><br><span class="line">Arr[<span class="number">1</span>] = <span class="number">3.3</span>;</span><br></pre></td></tr></table></figure></p>
+<img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/6.png">
+<p>在push下面的arr赋值还是生成了bailOnNotArray.通过研究发现,在上面还有一个语句引起了我的注意,push语句会把missingValues相关的type信息删掉:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/7.png"></p>
+<p>我们来看看这个MissingValues 的kill是怎么处理的:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/8.png"><br>原来如果chakraCore觉得arr的type信息中没有MissingValues,在经过push后,还是会把arr的type信息删去,当然这个十分容易bypass,只需要令|valueInfo-&gt;HasNoMissingValues|返回false,就会进入continue语句.换句话说,就是需要我们传入的arr中带有MissingValues.所以最后的PoC也就呼之欲出:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/9.png"></p>
+<h3 id="From-Bug-To-Remote-Code-Execution"><a href="#From-Bug-To-Remote-Code-Execution" class="headerlink" title="From Bug To Remote Code Execution"></a>From Bug To Remote Code Execution</h3><p>在这一系列的文章当中,我们对于利用的讲解步骤都只是会讲解到达成两个漏洞利用原语,第一是任意对象地址泄露,第二是任意地址对象fake.当有了这两个原语以后到最后的RCE网络上已经有大量公开的参考资料,大家可以自行参考查阅.<br><br><br>在PoC中,我们已经达到了第二种的漏洞利用原语,但是对于第一种的利用还是需要点技巧.因为在这个bug中,我们不能触发回调,而且只能插入一个固定的double float -5.3049894784e-314,所以很难泄露任意一个对象的地址.想挑战的读者可以先行尝试一些怎么利用,或者可以直接继续阅读查看怎么编写代码.<br><br><br>试想一下,在经过push语句后,|arr|对象的类型已经变成var array,换言之就是arr现在可以通过任何关于var array的检查.所以现在|arr|可以用于var array的赋值,而这个赋值是可以任意的一个对象.而我们在JIT的profile阶段必须要给对应的Symbol transfer一个var array.数组的赋值对应的字节码是StElem_A,这里唯一需要注意的就是不要触发这个Opcode<br>的任何bailout.下面查看|oarr[2] = leak_object|生成的对应IR信息:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/10.png"></p>
+<p>可以看到,只需要array的type信息符合(oarr必须是var array,上文已经提到,|arr|通过push已经转换成var array),MissingValue信息符合,index不大于数组的长度,即可当成一个正常的var array赋值.通过赋值以后,现在arr[2]上已经有一个对象的地址,通过return arr[2]即可得到该对象的地址.但是这个return的语句对应的native code的|RegOpnd|是float类型,而不是var,所以会直接把对象地址以浮点数的方式返回给我们,从而泄露该对象的地址,因为|arr|数组现在JIT的profile信息中还是一个double array.<br>这部分可能有点难以理解,下面我们结合PoC和注释进一步理解:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/11.png"></p>
+<p>在每次JIT开始之前,都会经历一个profile阶段,用于收集对象的类型信息用于JIT时候生成相关的类型检查与访问代码.在Profile阶段,我传入了一个NoMissingValues为false的float array,所以|arr[0]|和|arr[2]|的读写都是以float形式访问,换句话说,如果arr数组中存在对象的地址则可以通过|return arr[2]|成功读取出来.但是必须在第一句|arr[0]|通过类型检查,也就是arr一开始必须为float array类型.<br><br><br>其次,我传入了一个var array类型的数组|oarr|,所以|oarr[2] = leak_object|会把需要泄露的对象地址赋值到oarr[2]中,但是必须通过类型检查,也就是oarr在访问的时候必须为var array类型.<br><br><br>在漏洞触发的最后一次调用中,|arr|和|oarr|其实是同一个数组,在|arr[0] = 1.1|中,此时arr是float array,通过检查,赋值成功.通过|arr.push(value)|触发漏洞,改变数组类型,变成var array类型.在第三行代码|oarr[2] = leak_object|,因为|arr|和|oarr|是同一个数组,所以oarr当前为var array类型,通过检查,赋值成功.<br><br><br>最后一句是最关键的代码,我们可以看到,|arr[0] = 1.1|和|return arr[2]|中有两行代码,这两行代码必须不能kill |arr|的type信息,否则就会重新类型检查,因为arr已经转变成var array类型了,如果此时有类型检查就会检查失败然后bailout.上文已经详细分析了如果arr NoMissingValues为false,|arr.push(value)|是不会kill arr的type信息的.所以现在剩下|oarr[2] = leak_object|这句,对应的opcode是StElemI_A,|CheckJsArrayKills|代码如下:<br><img src="/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/12.png"></p>
+<p>我们可以看到,并没有任何情况会kill array的type信息.所以到最后没有任何类型检查,直接以浮点数的方式访问已经变成var array类型的arr,返回刚刚赋值的对象|leak_object|,将浮点数转换为16进制,即可得到对象的地址.得到这两个原语以后,距离RCE就不远了.</p>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><p>在这个bug中,我们可以看到,不需要触发任何的回调,最后我们成功利用了这个bug达到任意对象地址泄露和任意地址对象fake.关于这个bug的利用我个人觉得还是有点技巧的,而这个bug的根本原因就是开发人员忘记了push中的一些特殊情况而导致的过激优化,我们需要时刻记着,在保持性能优化的同时,也要注重安全.<br><br><br>关于下一篇的文章我们可能会继续写Edge,也可能会写Safari,请给予我们更多的反馈以决定我们的内容.<br>PLEASE STAY TUNED.THANK YOU FOR YOUR TIME.</p>
+</section>
+    <!-- Tags START -->
+    
+    <!-- Tags END -->
+    <!-- NAV START -->
+    
+    <!-- NAV END -->
+    <!-- 打赏 START -->
+    
+    <!-- 打赏 END -->
+    <!-- 二维码 START -->
+    
+    <!-- 二维码 END -->
+    
+      <!-- No Comment -->
+    
+  </article>
+  <!-- Article END -->
+  <!-- Catalog START -->
+  
+    <aside class="catalog-container">
+  <div class="toc-main">
+    <strong class="toc-title">Catalog</strong>
+    
+      <ol class="toc-nav"><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#前言"><span class="toc-nav-text">前言</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#JIT优化eliminate-duplicate-check"><span class="toc-nav-text">JIT优化eliminate duplicate check</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#JavaScript-undefined"><span class="toc-nav-text">JavaScript undefined</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#Please-DON’T-kill-my-NativeArrays-gt-lt"><span class="toc-nav-text">Please DON’T kill my NativeArrays  &gt;_&lt;</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#From-Bug-To-Remote-Code-Execution"><span class="toc-nav-text">From Bug To Remote Code Execution</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#总结"><span class="toc-nav-text">总结</span></a></li></ol>
+    
+  </div>
+</aside>
+  
+  <!-- Catalog END -->
+</main>
+
+<script>
+  (function () {
+    var url = 'blogs.projectmoon.pw/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/';
+    var banner = 'undefined'
+    if (banner !== '' && banner !== 'undefined' && banner !== 'null') {
+      $('#article-banner').css({
+        'background-image': 'url(' + banner + ')'
+      })
+    } else {
+      $('#article-banner').geopattern(url)
+    }
+    $('.header').removeClass('fixed-header')
+
+     // error image
+    $(".markdown-content img").on('error', function() {
+      $(this).attr('src', 'http://file.muyutech.com/error-img.png')
+      $(this).css({
+        'cursor': 'default'
+      })
+    })
+
+    // zoom image
+    $(".markdown-content img").on('click', function() {
+      var src = $(this).attr('src')
+      if (src !== 'http://file.muyutech.com/error-img.png') {
+        var imageW = $(this).width()
+        var imageH = $(this).height()
+        
+        var zoom = ($(window).width() * 0.95 / imageW).toFixed(2)
+        zoom = zoom < 1 ? 1 : zoom
+        zoom = zoom > 2 ? 2 : zoom
+        var transY = (($(window).height() - imageH) / 2).toFixed(2)
+
+        $('body').append('<div class="image-view-wrap"><div class="image-view-inner"><img src="'+ src +'" /></div></div>')
+        $('.image-view-wrap').addClass('wrap-active')
+        $('.image-view-wrap img').css({
+          'width': `${imageW}`,
+          'transform': `translate3d(0, ${transY}px, 0) scale3d(${zoom}, ${zoom}, 1)`
+        })
+        $('html').css('overflow', 'hidden')
+
+        $('.image-view-wrap').on('click', function() {
+          $(this).remove()
+          $('html').attr('style', '')
+        })
+      }
+    })
+
+    // qrcode
+    var qr = new QRious({
+      element: document.getElementById('share-qrcode'),
+      value: document.location.href
+    });
+
+    // gitment
+    var gitmentConfig = "ProjectMoonPwn";
+    if (gitmentConfig !== 'undefined') {
+      var gitment = new Gitment({
+        id: "Edge InlineArrayPush Remote Code Execution",
+        owner: "ProjectMoonPwn",
+        repo: "ProjectMoonPwn.github.io",
+        oauth: {
+          client_id: "fb487fd293d70aa12330",
+          client_secret: "9bfb5748d6481ed48ba725a75fe9fa83f87c0562"
+        },
+        theme: {
+          render(state, instance) {
+            const container = document.createElement('div')
+            container.lang = "en-US"
+            container.className = 'gitment-container gitment-root-container'
+            container.appendChild(instance.renderHeader(state, instance))
+            container.appendChild(instance.renderEditor(state, instance))
+            container.appendChild(instance.renderComments(state, instance))
+            container.appendChild(instance.renderFooter(state, instance))
+            return container;
+          }
+        }
+      })
+      gitment.render(document.getElementById('comments'))
+    }
+  })();
+</script>
+
+    <div class="scroll-top">
+  <span class="arrow-icon"></span>
+</div>
+    <footer class="app-footer">
+  <p class="copyright">
+    &copy; 2018 | ProjectMoon
+  </p>
+</footer>
+
+<script>
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+</script>
+<script>
+  async("//cdn.bootcss.com/fastclick/1.0.6/fastclick.min.js", function(){
+    FastClick.attach(document.body);
+  })
+</script>
+
+<script>
+  var hasLine = 'true';
+  async("//cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js", function(){
+    $('figure pre').each(function(i, block) {
+      var figure = $(this).parents('figure');
+      if (hasLine === 'false') {
+        figure.find('.gutter').hide();
+      }
+      var lang = figure.attr('class').split(' ')[1] || 'code';
+      var codeHtml = $(this).html();
+      var codeTag = document.createElement('code');
+      codeTag.className = lang;
+      codeTag.innerHTML = codeHtml;
+      $(this).attr('class', '').empty().html(codeTag);
+      figure.attr('data-lang', lang.toUpperCase());
+      hljs.highlightBlock(block);
+    });
+  })
+</script>
+<!-- Baidu Tongji -->
+
+<script src="/js/script.js"></script>
+
+  </body>
+</html>
