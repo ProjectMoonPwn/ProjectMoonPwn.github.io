@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport">
+  <meta name="description" content="ProjectMoonPwn">
+  <meta name="keyword" content="hexo-theme, vuejs">
+  
+    <link rel="shortcut icon" href="/css/images/logo.png">
+  
+  <title>
+    
+      A Late Kernel Bug: Type Confusion in NECP | Project Moon
+    
+  </title>
+  <link href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="//cdn.bootcss.com/nprogress/0.2.0/nprogress.min.css" rel="stylesheet">
+  <link href="//cdn.bootcss.com/highlight.js/9.12.0/styles/tomorrow.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/plugins/gitment.css">
+  <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+  <script src="//cdn.bootcss.com/geopattern/1.2.3/js/geopattern.min.js"></script>
+  <script src="//cdn.bootcss.com/nprogress/0.2.0/nprogress.min.js"></script>
+  <script src="/js/qrious.js"></script>
+<script src="/js/gitment.js"></script>
+  
+  
+    <!-- MathJax support START -->
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+        tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      });
+    </script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax(), i;
+        for (i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+        }
+      });
+    </script>
+    <script type="text/javascript" src="//cdn.bootcss.com/mathjax/2.7.1/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <!-- MathJax support END -->
+  
+
+
+</head>
+<div class="wechat-share">
+  <img src="/css/images/logo.png" />
+</div>
+
+  <body>
+    <header class="header fixed-header">
+  <div class="header-container">
+    <a class="home-link" href="/">
+      <div class="logo"></div>
+      <span>Project Moon</span>
+    </a>
+    <ul class="right-list">
+      
+        <li class="list-item">
+          
+            <a href="/" class="item-link">Home</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/archives/" class="item-link">Archives</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/about/" class="item-link">About</a>
+          
+        </li>
+      
+    </ul>
+    <div class="menu">
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </div>
+    <div class="menu-mask">
+      <ul class="menu-list">
+        
+          <li class="menu-item">
+            
+              <a href="/" class="menu-link">Home</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/archives/" class="menu-link">Archives</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/about/" class="menu-link">About</a>
+            
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</header>
+
+    <div id="article-banner">
+  <h2>A Late Kernel Bug: Type Confusion in NECP</h2>
+  <p class="post-date">2018-11-30</p>
+  <div class="arrow-down">
+    <a href="javascript:;"></a>
+  </div>
+</div>
+<main class="app-body flex-box">
+  <!-- Article START -->
+  <article class="post-article">
+    <section class="markdown-content"><p><strong>Author: Zhuo Liang of Qihoo 360 Nirvan Team</strong></p>
+<h2 id="1-介绍"><a href="#1-介绍" class="headerlink" title="1 介绍"></a>1 介绍</h2><p>Apple 对于代码开放的态度一直为广大的安全研究员们所诟病，代码更新总是扭扭捏捏滞后很多于系统发版时间。比如当前 macOS 的最新版本为 Mojave 10.14.1，而最新的代码还停留在 <a href="https://opensource.apple.com/source/xnu/xnu-4570.71.2/" target="_blank" rel="noopener">10.13.6</a>。本文将要提到的是笔者在审计 10.13.6 的代码时发现的一个内核漏洞，而在验证的时候发现在最新版本已经无法触发，经过分析发现这不是一个 0-day，而是一个已经在 macOS 10.14 和 iOS 12.0 上已经修补了的问题。由于这个漏洞的触发没有权限限制和强制访问控制，漏洞本身也有一定代表性，特记录分享一下。</p>
+<h2 id="2-背景知识"><a href="#2-背景知识" class="headerlink" title="2 背景知识"></a>2 背景知识</h2><h3 id="2-1-一切皆文件"><a href="#2-1-一切皆文件" class="headerlink" title="2.1 一切皆文件"></a>2.1 一切皆文件</h3><p>*nix 世界众多的优秀品质(所谓设计哲学)最广为人知的可能就是“一切皆文件”了。在这种设计理念下，在 *nix 下特别是在 Linux 里，大部分内核对象，比如普通文件、socket、共享内存和信号量等，都是由内核给用户态暴露一个文件描述符，并提供对于文件描述符的统一操作，常见的比如 <em>read</em>、<em>write</em>、<em>close</em> 和 <em>select</em> 等。 很显然，内核对于这些文件描述符本身所代表的对象类型都是有标记的，通过类型将这些同样的系统调用分配到各自的回调函数中，这就是 C 语言里的多态。 Linux 里另外一个重度依赖多态的模块就是 VFS，与本文要谈的漏洞无关，所以此处不谈。<br><br><br>macOS 和 iOS 内核(以下统一称 XNU)的部分代码也遵循“一切皆文件”这条原则。在 XNU 里，内核为每个进程维护一张文件描述符与文件表项的映射表<code>struct filedesc * p_fd</code>，每一个文件表项即为每一个与文件有关操作的第一步需要获取的对象，其定义如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/sys/file_internal.h</span></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * Kernel descriptor table.</span></span><br><span class="line"><span class="comment"> * One entry for each open kernel vnode and socket.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">fileproc</span> &#123;</span></span><br><span class="line">	<span class="keyword">unsigned</span> <span class="keyword">int</span> f_flags;</span><br><span class="line">	<span class="keyword">int32_t</span> f_iocount;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fileglob</span> * <span class="title">f_fglob</span>;</span></span><br><span class="line">	<span class="keyword">void</span> * f_wset;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>在这个结构体的成员中，最重要的一项即为 <code>struct fileglob * f_fglob</code>，其定义如下：<br><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/sys/file_internal.h</span></span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">fileglob</span> &#123;</span></span><br><span class="line">    LIST_ENTRY(fileglob) f_msglist; <span class="comment">/* list of active files */</span></span><br><span class="line">    <span class="keyword">int32_t</span> fg_flag;                <span class="comment">/* see fcntl.h */</span></span><br><span class="line">    <span class="keyword">int32_t</span> fg_count;               <span class="comment">/* reference count */</span></span><br><span class="line">    <span class="keyword">int32_t</span> fg_msgcount;            <span class="comment">/* references from message queue */</span></span><br><span class="line">    <span class="keyword">int32_t</span> fg_lflags;              <span class="comment">/* file global flags */</span></span><br><span class="line">    <span class="keyword">kauth_cred_t</span> fg_cred;           <span class="comment">/* credentials associated with descriptor */</span></span><br><span class="line">    <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">fileops</span> &#123;</span></span><br><span class="line">        <span class="keyword">file_type_t</span> fo_type; <span class="comment">/* descriptor type */</span></span><br><span class="line">        <span class="keyword">int</span> (*fo_read)(struct fileproc * fp, struct uio * uio, <span class="keyword">int</span> flags, </span><br><span class="line">        			   <span class="keyword">vfs_context_t</span> ctx);</span><br><span class="line">        <span class="keyword">int</span> (*fo_write)(struct fileproc * fp, struct uio * uio, <span class="keyword">int</span> flags, </span><br><span class="line">        	   			<span class="keyword">vfs_context_t</span> ctx);</span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FOF_OFFSET 0x00000001 <span class="comment">/* offset supplied to vn_write */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FOF_PCRED 0x00000002  <span class="comment">/* cred from proc, not current thread */</span></span></span><br><span class="line">        <span class="keyword">int</span> (*fo_ioctl)(struct fileproc * fp, u_long com, <span class="keyword">caddr_t</span> data, </span><br><span class="line">        	  			<span class="keyword">vfs_context_t</span> ctx);</span><br><span class="line">        <span class="keyword">int</span> (*fo_select)(struct fileproc * fp, <span class="keyword">int</span> which, <span class="keyword">void</span> * wql, </span><br><span class="line">        				 <span class="keyword">vfs_context_t</span> ctx);</span><br><span class="line">        <span class="keyword">int</span> (*fo_close)(struct fileglob * fg, <span class="keyword">vfs_context_t</span> ctx);</span><br><span class="line">        <span class="keyword">int</span> (*fo_kqfilter)(struct fileproc * fp, struct knote * kn, </span><br><span class="line">        				   struct kevent_internal_s * kev, </span><br><span class="line">        				   <span class="keyword">vfs_context_t</span> ctx);</span><br><span class="line">        <span class="keyword">int</span> (*fo_drain)(struct fileproc * fp, <span class="keyword">vfs_context_t</span> ctx);</span><br><span class="line">    &#125; * fg_ops;</span><br><span class="line">    <span class="keyword">off_t</span> fg_offset;</span><br><span class="line">    <span class="keyword">void</span> * fg_data;    <span class="comment">/* vnode or socket or SHM or semaphore */</span></span><br><span class="line">    <span class="keyword">void</span> * fg_vn_data; <span class="comment">/* Per fd vnode data, used for directories */</span></span><br><span class="line">    <span class="keyword">lck_mtx_t</span> fg_lock;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> CONFIG_MACF</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">label</span> * <span class="title">fg_label</span>;</span> <span class="comment">/* JMM - use the one in the cred? */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure></p>
+<p>在 <code>struct fileglob</code> 中，需要关注的几个成员如下：<br>a) <code>fg_flag</code> 对于文件操作的权限，比如 <code>FWRITE</code>和<code>FREAD</code>，读写操作对应的不同类型的对象有不同的解释。<br>b) <code>fileops</code> 文件操作定义，其中需要关注 <code>fo_type</code> 也就是对象类型，在 XNU 中目前存在的几种类型如下：<br><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/sys/file_internal.h</span></span><br><span class="line"><span class="comment">/* file types */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="keyword">enum</span> &#123;</span><br><span class="line">	DTYPE_VNODE = <span class="number">1</span>, <span class="comment">/* file */</span></span><br><span class="line">	DTYPE_SOCKET,    <span class="comment">/* communications endpoint */</span></span><br><span class="line">	DTYPE_PSXSHM,    <span class="comment">/* POSIX Shared memory */</span></span><br><span class="line">	DTYPE_PSXSEM,    <span class="comment">/* POSIX Semaphores */</span></span><br><span class="line">	DTYPE_KQUEUE,    <span class="comment">/* kqueue */</span></span><br><span class="line">	DTYPE_PIPE,      <span class="comment">/* pipe */</span></span><br><span class="line">	DTYPE_FSEVENTS,  <span class="comment">/* fsevents */</span></span><br><span class="line">	DTYPE_ATALK,     <span class="comment">/* (obsolete) */</span></span><br><span class="line">	DTYPE_NETPOLICY, <span class="comment">/* networking policy */</span></span><br><span class="line">&#125; <span class="keyword">file_type_t</span>;</span><br></pre></td></tr></table></figure></p>
+<p>c) <code>fg_data</code> 代表真正的对象以及上下文信息，<code>fileops</code> 里的 <code>fo_*</code> 回调函数最终都是操作对应的 <code>fg_data</code> 对象。</p>
+<p>下面以 <em>socket</em> 的创建为例说明上述大致流程。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/kern/uipc_syscall.c </span></span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">int</span></span><br><span class="line">socket_common(struct proc * p, <span class="keyword">int</span> domain, <span class="keyword">int</span> type, <span class="keyword">int</span> protocol, <span class="keyword">pid_t</span> epid, </span><br><span class="line">	<span class="keyword">int32_t</span> * retval, <span class="keyword">int</span> delegate)</span><br><span class="line">&#123;</span><br><span class="line">	...</span><br><span class="line">	error = falloc(p, &amp;fp, &amp;fd, vfs_context_current());</span><br><span class="line">	<span class="keyword">if</span> (error) &#123;</span><br><span class="line">		<span class="keyword">return</span> (error);</span><br><span class="line">	&#125;</span><br><span class="line">	fp-&gt;f_flag = FREAD | </span><br><span class="line">		FWRITE; <span class="comment">// [a]，这里的 f_flag 实际上是指向 fileops 的 fg_flag，下同。</span></span><br><span class="line">	fp-&gt;f_ops  = &amp;socketops; <span class="comment">// [b]</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (delegate)</span><br><span class="line">		error = socreate_delegate(domain, &amp;so, type, protocol, epid);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		error = socreate(domain, &amp;so, type, protocol); <span class="comment">// [c]</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (error) &#123;</span><br><span class="line">		fp_free(p, fd, fp);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		fp-&gt;f_data = (<span class="keyword">caddr_t</span>)so; <span class="comment">// [d]</span></span><br><span class="line">		...</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> (error);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在用户态调用 <code>socket(AF_INET, SOCK_STREAM, 0)</code>  后，内核代码将进入如上流程，首先分配文件表项和 <em>fileglob</em> 对象，然后在 [a] 处将 <em>fg_flag</em> 设置为可读可写，表示可以对这个 socket 进行发送和接收数据相关操作。在 [b] 处，将 <em>fileops</em> 设置为 <code>socketops</code>，对于该变量的定义如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/kern/sys_socket.c</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">fileops</span> <span class="title">socketops</span> = &#123;</span></span><br><span class="line">    .fo_type     = DTYPE_SOCKET,</span><br><span class="line">    .fo_read     = soo_read,</span><br><span class="line">    .fo_write    = soo_write,</span><br><span class="line">    .fo_ioctl    = soo_ioctl,</span><br><span class="line">    .fo_select   = soo_select,</span><br><span class="line">    .fo_close    = soo_close,</span><br><span class="line">    .fo_kqfilter = soo_kqfilter,</span><br><span class="line">    .fo_drain    = soo_drain,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>该变量里设置的成员回调函数即为用户态的系统调用将会真正触发的函数。在 [c] 处， <code>socreate</code> 函数会根据 <em>domain</em>、<em>type</em> 和 <em>protocol</em> 创建 <code>struct socket</code> 对象， 并在 [d] 处赋给 <em>fg_data</em>，即为真正的 backend object。</p>
+<h3 id="2-2-NECP"><a href="#2-2-NECP" class="headerlink" title="2.2 NECP"></a>2.2 NECP</h3><p>NECP, Network Extension Control Policy，顾名思义是一种网络控制策略，下面是内核对其作出的解释：<br><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/net/necp.c</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * NECP - Network Extension Control Policy database</span></span><br><span class="line"><span class="comment"> * ------------------------------------------------</span></span><br><span class="line"><span class="comment"> * The goal of this module is to allow clients connecting via a</span></span><br><span class="line"><span class="comment"> * kernel control socket to create high-level policy sessions, which</span></span><br><span class="line"><span class="comment"> * are ingested into low-level kernel policies that control and tag</span></span><br><span class="line"><span class="comment"> * traffic at the application, socket, and IP layers.</span></span><br><span class="line"><span class="comment"> */</span></span><br></pre></td></tr></table></figure></p>
+<p>简单的说就是用户态程序可以通过 NECP 来创建一些策略并将其注入到内核网络流量处理的模块中，对于应用层、socket 层和 IP 层的流量进行控制以及标记。本文不对与本漏洞无关的业务逻辑进行阐述，感兴趣的读者可以自行阅读内核代码。<br><br><br>在谈 NECP 的同时可以简单的介绍一下 <em>Kernrl Control</em>，通过官网对 <em>Kernel Control</em> 的<a href="https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/NKEConceptual/control/control.html" target="_blank" rel="noopener">介绍</a>可以知道，<em>Kernel Control</em> 的主要作用就是用来使用户态程序有能力配置和控制内核以及内核扩展，这就是 NECP 最开始提供给用户态访问的最原始的形式。具体而言，内核首先通过 <em>Kernel Control</em> 提供的 KPI 注册一种 <em>socket</em> 类型，使用户态可以通过诸如 <code>socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL)</code> 访问到。注册部分的代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/net/necp.c</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">errno_t</span></span><br><span class="line">necp_register_control(<span class="keyword">void</span>)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">kern_ctl_reg</span> <span class="title">kern_ctl</span>;</span></span><br><span class="line">	<span class="keyword">errno_t</span> result = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Create a tag to allocate memory</span></span><br><span class="line">	necp_malloc_tag = OSMalloc_Tagalloc(NECP_CONTROL_NAME, OSMT_DEFAULT);</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Find a unique value for our interface family</span></span><br><span class="line">	result = mbuf_tag_id_find(NECP_CONTROL_NAME, &amp;necp_family);</span><br><span class="line">	<span class="keyword">if</span> (result != <span class="number">0</span>) &#123;</span><br><span class="line">		NECPLOG(LOG_ERR, <span class="string">"mbuf_tag_id_find_internal failed: %d"</span>, result);</span><br><span class="line">		<span class="keyword">return</span> (result);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	bzero(&amp;kern_ctl, <span class="keyword">sizeof</span>(kern_ctl));</span><br><span class="line">	strlcpy(kern_ctl.ctl_name, NECP_CONTROL_NAME, <span class="keyword">sizeof</span>(kern_ctl.ctl_name));</span><br><span class="line">	kern_ctl.ctl_name[<span class="keyword">sizeof</span>(kern_ctl.ctl_name) - <span class="number">1</span>] = <span class="number">0</span>;</span><br><span class="line">	kern_ctl.ctl_flags                          	 = CTL_FLAG_PRIVILEGED; <span class="comment">// Require root</span></span><br><span class="line">	kern_ctl.ctl_sendsize                            = <span class="number">64</span> * <span class="number">1024</span>;</span><br><span class="line">	kern_ctl.ctl_recvsize                            = <span class="number">64</span> * <span class="number">1024</span>;</span><br><span class="line">	kern_ctl.ctl_connect                             = necp_ctl_connect;</span><br><span class="line">	kern_ctl.ctl_disconnect                          = necp_ctl_disconnect;</span><br><span class="line">	kern_ctl.ctl_send                                = necp_ctl_send;</span><br><span class="line">	kern_ctl.ctl_rcvd                                = necp_ctl_rcvd;</span><br><span class="line">	kern_ctl.ctl_setopt                              = necp_ctl_setopt;</span><br><span class="line">	kern_ctl.ctl_getopt                              = necp_ctl_getopt;</span><br><span class="line"></span><br><span class="line">	result = ctl_register(&amp;kern_ctl, &amp;necp_kctlref);</span><br><span class="line">	<span class="keyword">if</span> (result != <span class="number">0</span>) &#123;</span><br><span class="line">		NECPLOG(LOG_ERR, <span class="string">"ctl_register failed: %d"</span>, result);</span><br><span class="line">		<span class="keyword">return</span> (result);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> (<span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>内核使用 <code>ctl_register</code> 函数将一个 <code>kern_ctl</code> 的对象注册到一个全局的数据集中。同样这里也有几点需要关注：<br>a) <code>NECP_CONTROL_NAME</code> 内核定义的宏，定义为字符串 <code>com.apple.net.necp_control</code>。<br>b) <code>kern_ctl.ctl_flags</code> 标记为需要 <code>root</code> 才能访问，后面会有提到。<br>c) <code>necp_ctl_*</code> 系列函数，作为回调函数会被对 NECP Kernel Control 的套接字的操作触发。</p>
+<p>用户态在创建相关套接字后，通过 <em>connect</em> 系统调用可以创建与内核 NECP 模块交互的会话，并通过 <em>write</em> 的方式配置网络策略，通过 <em>read</em> 的方式读取内核通知。</p>
+<h3 id="2-3-代码审计的一点思考"><a href="#2-3-代码审计的一点思考" class="headerlink" title="2.3 代码审计的一点思考"></a>2.3 代码审计的一点思考</h3><p>至此，对于本漏洞的基本知识已介绍完毕，本小结作为笔者审计代码的一点小感受，与本文主题无关，不感兴趣的读者可以直接阅读第3部分。<br><br><br>本文提到的代码广义上都是多态，而在 C 语言里多态的实现基本要依赖回调函数。对于更加复杂的诸如此类的回调函数系统实际上是很容易出问题的，阅读理解困难、调试不方便，这点笔者在曾经作为开发者参与开发维护一个回调满天飞的软件时深有体会，很显然会出现的问题有如下两点：</p>
+<p>a) 资源管理 底层语言程序员们肯定会听过“谁开发，谁保护；谁污染，谁治理”的资源管理原则，但是事情总是这样吗？在实际的案例中，再优美的设计也有可能被历史包袱和奇葩的需求所打败，最后落得一地鸡毛。当然，遵循一种统一的资源管理原则肯定是值得提倡的，问题是软件开发初期肯定会有考虑欠周的地方，加上开发中后期人员的变动，后来参与的成员可能会因为不能熟悉该软件中的统一规范而导致写了危险的代码。<br>b) 处理逻辑 这里提到的处理逻辑是指回调函数设计之初所期望的开发者对于这些回调函数的参数、返回值的处理以及实际逻辑所能访问的边界有足够的意见一致性，这些问题较多出现在扩展性质的程序中。而对这些约定的东西处理不当又极易导致资源管理的问题。</p>
+<p>篇幅有限，这里不进行展开，观点仅作为一点不成熟的小建议。</p>
+<h2 id="3-类型混淆"><a href="#3-类型混淆" class="headerlink" title="3 类型混淆"></a>3 类型混淆</h2><p>目前为止所提到的内容都是没问题的，问题出在 Apple 在2017年7月份一次更新(没有仔细看，感兴趣的读者可以自行查证)中添加的关于 <code>necp</code> 模块的几个系统调用里面。这些系统调用作为 2.2 中提到的用 <em>socket</em> 的方式操作 NECP 的一种替代品。具体来说就是 <code>necp_session_*</code> 和 <code>necp_client_*</code> 这两类函数。这些函数是怎么实现相关功能的这里不讨论，只谈与漏洞相关的地方。<br><br><br>内核提供 <code>necp_open</code> 和 <code>necp_session_open</code> 这两个系统调用，并且两个系统调用都返回文件描述符，根据之前提到的，文件描述符所对应的内核真正的对象的类型应该是不同的。通过查看代码发现，确实不同。两个函数的代码如下：<br><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/net/necp.c </span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">necp_session_open</span><span class="params">(struct proc * p, struct necp_session_open_args * uap, <span class="keyword">int</span> * retval)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">int</span> error                     = <span class="number">0</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">necp_session</span> * <span class="title">session</span> = <span class="title">NULL</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fileproc</span> * <span class="title">fp</span>          = <span class="title">NULL</span>;</span></span><br><span class="line">	<span class="keyword">int</span> fd                        = <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">uid_t</span> uid = kauth_cred_getuid(proc_ucred(p));</span><br><span class="line">	<span class="keyword">if</span> (uid != <span class="number">0</span> &amp;&amp; priv_check_cred(kauth_cred_get(), </span><br><span class="line">		PRIV_NET_PRIVILEGED_NECP_POLICIES, <span class="number">0</span>) != <span class="number">0</span>) &#123; <span class="comment">// [a]</span></span><br><span class="line">		NECPLOG0(LOG_ERR, <span class="string">"Process does not hold necessary entitlement to open NECP session"</span>);</span><br><span class="line">		error = EACCES;</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	error = falloc(p, &amp;fp, &amp;fd, vfs_context_current());</span><br><span class="line">	<span class="keyword">if</span> (error != <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	session = necp_create_session(); <span class="comment">// [b]</span></span><br><span class="line">	<span class="keyword">if</span> (session == <span class="literal">NULL</span>) &#123;</span><br><span class="line">		error = ENOMEM;</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	fp-&gt;f_fglob-&gt;fg_flag = <span class="number">0</span>;</span><br><span class="line">	fp-&gt;f_fglob-&gt;fg_ops  = &amp;necp_session_fd_ops; <span class="comment">// [c]</span></span><br><span class="line">	fp-&gt;f_fglob-&gt;fg_data = session; <span class="comment">// [d]</span></span><br><span class="line"></span><br><span class="line">	proc_fdlock(p);</span><br><span class="line">	FDFLAGS_SET(p, fd, (UF_EXCLOSE | UF_FORKCLOSE));</span><br><span class="line">	procfdtbl_releasefd(p, fd, <span class="literal">NULL</span>);</span><br><span class="line">	fp_drop(p, fd, fp, <span class="number">1</span>);</span><br><span class="line">	proc_fdunlock(p);</span><br><span class="line"></span><br><span class="line">	*retval = fd;</span><br><span class="line">done:</span><br><span class="line">	<span class="keyword">if</span> (error != <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (fp != <span class="literal">NULL</span>) &#123;</span><br><span class="line">			fp_free(p, fd, fp);</span><br><span class="line">			fp = <span class="literal">NULL</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> (error);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/net/necp_client.c</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">necp_open</span><span class="params">(struct proc * p, struct necp_open_args * uap, <span class="keyword">int</span> * retval)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">int</span> error                     = <span class="number">0</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">necp_fd_data</span> * <span class="title">fd_data</span> = <span class="title">NULL</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fileproc</span> * <span class="title">fp</span>          = <span class="title">NULL</span>;</span></span><br><span class="line">	<span class="keyword">int</span> fd                        = <span class="number">-1</span>;</span><br><span class="line">	...</span><br><span class="line">	error = falloc(p, &amp;fp, &amp;fd, vfs_context_current());</span><br><span class="line">	<span class="keyword">if</span> (error != <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> ((fd_data = zalloc(necp_client_fd_zone)) == <span class="literal">NULL</span>) &#123; <span class="comment">// [f]</span></span><br><span class="line">		error = ENOMEM;</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="built_in">memset</span>(fd_data, <span class="number">0</span>, <span class="keyword">sizeof</span>(*fd_data));</span><br><span class="line"></span><br><span class="line">	fd_data-&gt;necp_fd_type = necp_fd_type_client;</span><br><span class="line">	fd_data-&gt;flags        = uap-&gt;flags;</span><br><span class="line">	RB_INIT(&amp;fd_data-&gt;clients);</span><br><span class="line">	TAILQ_INIT(&amp;fd_data-&gt;update_list);</span><br><span class="line">	lck_mtx_init(&amp;fd_data-&gt;fd_lock, necp_fd_mtx_grp, necp_fd_mtx_attr);</span><br><span class="line">	klist_init(&amp;fd_data-&gt;si.si_note);</span><br><span class="line">	fd_data-&gt;proc_pid = proc_pid(p);</span><br><span class="line"></span><br><span class="line">	fp-&gt;f_fglob-&gt;fg_flag = FREAD;</span><br><span class="line">	fp-&gt;f_fglob-&gt;fg_ops  = &amp;necp_fd_ops; <span class="comment">// [g]</span></span><br><span class="line">	fp-&gt;f_fglob-&gt;fg_data = fd_data; <span class="comment">// [h]</span></span><br><span class="line"></span><br><span class="line">	proc_fdlock(p);</span><br><span class="line"></span><br><span class="line">	*fdflags(p, fd) |= (UF_EXCLOSE | UF_FORKCLOSE);</span><br><span class="line">	procfdtbl_releasefd(p, fd, <span class="literal">NULL</span>);</span><br><span class="line">	fp_drop(p, fd, fp, <span class="number">1</span>);</span><br><span class="line">	...</span><br><span class="line">	<span class="keyword">return</span> (error);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>注意代码中标记字母的地方。在 [d] 和 [h] 处对应赋值的两个对象的类型分别为 <code>struct necp_session</code> 和 <code>struct necp_fd_data</code> 类型。再注意 [c] 和 [g] 处， 给 <em>fileops</em> 赋值的值分别为：<br><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/net/necp.c</span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">fileops</span> <span class="title">necp_session_fd_ops</span> = &#123;</span></span><br><span class="line">    .fo_type     = DTYPE_NETPOLICY,</span><br><span class="line">    .fo_read     = noop_read,</span><br><span class="line">    .fo_write    = noop_write,</span><br><span class="line">    .fo_ioctl    = noop_ioctl,</span><br><span class="line">    .fo_select   = noop_select,</span><br><span class="line">    .fo_close    = necp_session_op_close,</span><br><span class="line">    .fo_kqfilter = noop_kqfilter,</span><br><span class="line">    .fo_drain    = <span class="literal">NULL</span>,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/net/necp_client.c</span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">fileops</span> <span class="title">necp_fd_ops</span> = &#123;</span></span><br><span class="line">    .fo_type     = DTYPE_NETPOLICY,</span><br><span class="line">    .fo_read     = noop_read,</span><br><span class="line">    .fo_write    = noop_write,</span><br><span class="line">    .fo_ioctl    = noop_ioctl,</span><br><span class="line">    .fo_select   = necpop_select,</span><br><span class="line">    .fo_close    = necpop_close,</span><br><span class="line">    .fo_kqfilter = necpop_kqfilter,</span><br><span class="line">    .fo_drain    = <span class="literal">NULL</span>,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p><em>fo_type</em> 都是 <code>DTYPE_NETPOLICY</code>，类型居然一样！再看从文件描述符到具体对象转换的函数：<br><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// bsd/net/necp.c</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">int</span></span><br><span class="line">necp_session_find_from_fd(<span class="keyword">int</span> fd, struct necp_session ** session)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">proc_t</span> p             = current_proc();</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fileproc</span> * <span class="title">fp</span> = <span class="title">NULL</span>;</span></span><br><span class="line">	<span class="keyword">int</span> error            = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	proc_fdlock_spin(p);</span><br><span class="line">	<span class="keyword">if</span> ((error = fp_lookup(p, fd, &amp;fp, <span class="number">1</span>)) != <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (fp-&gt;f_fglob-&gt;fg_ops-&gt;fo_type != DTYPE_NETPOLICY) &#123; <span class="comment">// [a]</span></span><br><span class="line">		fp_drop(p, fd, fp, <span class="number">1</span>);</span><br><span class="line">		error = ENODEV;</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line">	*session = (struct necp_session *)fp-&gt;f_fglob-&gt;fg_data; <span class="comment">// [b]</span></span><br><span class="line"></span><br><span class="line">done:</span><br><span class="line">	proc_fdunlock(p);</span><br><span class="line">	<span class="keyword">return</span> (error);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>另外一个函数对应也一样，可自行查阅。在这里，[a] 处先判断该类型是否为 <em>DTYPE_NETPOLICY</em>，[b] 处，直接就转换成 <em>struct necp_session</em> 对象。单个的看是没有问题的，但如果传进来的是一个代表了 <em>struct necp_fd_data</em> 的文件描述符呢，此时在 [a] 处， <em>CHECK</em>！[b] 处，<em>TYPE CONFUSION</em>。下载 <a href="/2018/11/30/A-Late-Kernel-Bug-Type-Confusion-in-NECP/NECPTypeConfusion.c" title="PoC">PoC</a> 可验证这一猜想。<br><br></p>
+<h2 id="4-权限与沙箱"><a href="#4-权限与沙箱" class="headerlink" title="4 权限与沙箱"></a>4 权限与沙箱</h2><p>在 PoC 中，使用的是 <em>necp_open</em> 创建 <em>necp_fd_data</em> 对象， 然后以把其当做 <em>necp_session</em> 对象。反过来其实也行，但是由于 <em>necp_session_open</em> 函数因为 <code>PRIV_NET_PRIVILEGED_NECP_POLICIES</code> 的检查是普通用户无法成功调用的，所以最好是以 PoC 中的方式触发。同时，在这几个函数中，是没有沙盒限制的，意味着这个类型混淆漏洞可以用来绕过任意沙盒。</p>
+<h2 id="5-漏洞修复"><a href="#5-漏洞修复" class="headerlink" title="5 漏洞修复"></a>5 漏洞修复</h2><p>查证了内核最新代码(没有源代码，只有二进制)，修复的方式是加了一个子类型的检查。<br><em>necp_session_find_from_fd</em> 函数：<br><img src="/2018/11/30/A-Late-Kernel-Bug-Type-Confusion-in-NECP/3.png"><br><em>necp_find_fd_data</em> 函数：<br><img src="/2018/11/30/A-Late-Kernel-Bug-Type-Confusion-in-NECP/4.png"></p>
+<p>在 <em>fg_data</em> 的第一个字节存储的就是这个类型信息，这个在漏洞修复之前就存在，只是没有利用起来。</p>
+<h2 id="6-One-More"><a href="#6-One-More" class="headerlink" title="6 One More"></a>6 One More</h2><p>在验证漏洞失败后的失望之余，在<a href="https://support.apple.com/en-us/HT209193" target="_blank" rel="noopener">苹果公告</a>上找到了可能的漏洞致谢信息。<br><img src="/2018/11/30/A-Late-Kernel-Bug-Type-Confusion-in-NECP/1.png"><br>随后又去 <a href="https://www.zerodayinitiative.com/advisories/ZDI-18-1325/" target="_blank" rel="noopener">ZDI</a> 上证实了这个信息，编号为 <strong>CVE-2018-4425</strong>。<br><img src="/2018/11/30/A-Late-Kernel-Bug-Type-Confusion-in-NECP/2.png"></p>
+<p>行文仓促，难免会有不严谨的地方，<a href="mailto:brightiup.zhuo@gmail.com" target="_blank" rel="noopener">欢迎指出</a> 。</p>
+</section>
+    <!-- Tags START -->
+    
+    <!-- Tags END -->
+    <!-- NAV START -->
+    
+  <div class="nav-container">
+    <!-- reverse left and right to put prev and next in a more logic postition -->
+    
+      <a class="nav-left" href="/2018/10/26/Chakra-JIT-Loop-LandingPad-ImplicitCall-Bypass/">
+        <span class="nav-arrow">← </span>
+        
+          Chakra JIT Loop LandingPad ImplicitCall Bypass
+        
+      </a>
+    
+    
+  </div>
+
+    <!-- NAV END -->
+    <!-- 打赏 START -->
+    
+    <!-- 打赏 END -->
+    <!-- 二维码 START -->
+    
+    <!-- 二维码 END -->
+    
+      <!-- No Comment -->
+    
+  </article>
+  <!-- Article END -->
+  <!-- Catalog START -->
+  
+    <aside class="catalog-container">
+  <div class="toc-main">
+    <strong class="toc-title">Catalog</strong>
+    
+      <ol class="toc-nav"><li class="toc-nav-item toc-nav-level-2"><a class="toc-nav-link" href="#1-介绍"><span class="toc-nav-text">1 介绍</span></a></li><li class="toc-nav-item toc-nav-level-2"><a class="toc-nav-link" href="#2-背景知识"><span class="toc-nav-text">2 背景知识</span></a><ol class="toc-nav-child"><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#2-1-一切皆文件"><span class="toc-nav-text">2.1 一切皆文件</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#2-2-NECP"><span class="toc-nav-text">2.2 NECP</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#2-3-代码审计的一点思考"><span class="toc-nav-text">2.3 代码审计的一点思考</span></a></li></ol></li><li class="toc-nav-item toc-nav-level-2"><a class="toc-nav-link" href="#3-类型混淆"><span class="toc-nav-text">3 类型混淆</span></a></li><li class="toc-nav-item toc-nav-level-2"><a class="toc-nav-link" href="#4-权限与沙箱"><span class="toc-nav-text">4 权限与沙箱</span></a></li><li class="toc-nav-item toc-nav-level-2"><a class="toc-nav-link" href="#5-漏洞修复"><span class="toc-nav-text">5 漏洞修复</span></a></li><li class="toc-nav-item toc-nav-level-2"><a class="toc-nav-link" href="#6-One-More"><span class="toc-nav-text">6 One More</span></a></li></ol>
+    
+  </div>
+</aside>
+  
+  <!-- Catalog END -->
+</main>
+
+<script>
+  (function () {
+    var url = 'blogs.projectmoon.pw/2018/11/30/A-Late-Kernel-Bug-Type-Confusion-in-NECP/';
+    var banner = 'undefined'
+    if (banner !== '' && banner !== 'undefined' && banner !== 'null') {
+      $('#article-banner').css({
+        'background-image': 'url(' + banner + ')'
+      })
+    } else {
+      $('#article-banner').geopattern(url)
+    }
+    $('.header').removeClass('fixed-header')
+
+     // error image
+    $(".markdown-content img").on('error', function() {
+      $(this).attr('src', 'http://file.muyutech.com/error-img.png')
+      $(this).css({
+        'cursor': 'default'
+      })
+    })
+
+    // zoom image
+    $(".markdown-content img").on('click', function() {
+      var src = $(this).attr('src')
+      if (src !== 'http://file.muyutech.com/error-img.png') {
+        var imageW = $(this).width()
+        var imageH = $(this).height()
+        
+        var zoom = ($(window).width() * 0.95 / imageW).toFixed(2)
+        zoom = zoom < 1 ? 1 : zoom
+        zoom = zoom > 2 ? 2 : zoom
+        var transY = (($(window).height() - imageH) / 2).toFixed(2)
+
+        $('body').append('<div class="image-view-wrap"><div class="image-view-inner"><img src="'+ src +'" /></div></div>')
+        $('.image-view-wrap').addClass('wrap-active')
+        $('.image-view-wrap img').css({
+          'width': `${imageW}`,
+          'transform': `translate3d(0, ${transY}px, 0) scale3d(${zoom}, ${zoom}, 1)`
+        })
+        $('html').css('overflow', 'hidden')
+
+        $('.image-view-wrap').on('click', function() {
+          $(this).remove()
+          $('html').attr('style', '')
+        })
+      }
+    })
+
+    // qrcode
+    var qr = new QRious({
+      element: document.getElementById('share-qrcode'),
+      value: document.location.href
+    });
+
+    // gitment
+    var gitmentConfig = "ProjectMoonPwn";
+    if (gitmentConfig !== 'undefined') {
+      var gitment = new Gitment({
+        id: "A Late Kernel Bug: Type Confusion in NECP",
+        owner: "ProjectMoonPwn",
+        repo: "ProjectMoonPwn.github.io",
+        oauth: {
+          client_id: "fb487fd293d70aa12330",
+          client_secret: "9bfb5748d6481ed48ba725a75fe9fa83f87c0562"
+        },
+        theme: {
+          render(state, instance) {
+            const container = document.createElement('div')
+            container.lang = "en-US"
+            container.className = 'gitment-container gitment-root-container'
+            container.appendChild(instance.renderHeader(state, instance))
+            container.appendChild(instance.renderEditor(state, instance))
+            container.appendChild(instance.renderComments(state, instance))
+            container.appendChild(instance.renderFooter(state, instance))
+            return container;
+          }
+        }
+      })
+      gitment.render(document.getElementById('comments'))
+    }
+  })();
+</script>
+
+    <div class="scroll-top">
+  <span class="arrow-icon"></span>
+</div>
+    <footer class="app-footer">
+  <p class="copyright">
+    &copy; 2018 | ProjectMoon
+  </p>
+</footer>
+
+<script>
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+</script>
+<script>
+  async("//cdn.bootcss.com/fastclick/1.0.6/fastclick.min.js", function(){
+    FastClick.attach(document.body);
+  })
+</script>
+
+<script>
+  var hasLine = 'true';
+  async("//cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js", function(){
+    $('figure pre').each(function(i, block) {
+      var figure = $(this).parents('figure');
+      if (hasLine === 'false') {
+        figure.find('.gutter').hide();
+      }
+      var lang = figure.attr('class').split(' ')[1] || 'code';
+      var codeHtml = $(this).html();
+      var codeTag = document.createElement('code');
+      codeTag.className = lang;
+      codeTag.innerHTML = codeHtml;
+      $(this).attr('class', '').empty().html(codeTag);
+      figure.attr('data-lang', lang.toUpperCase());
+      hljs.highlightBlock(block);
+    });
+  })
+</script>
+<!-- Baidu Tongji -->
+
+<script src="/js/script.js"></script>
+
+  </body>
+</html>
