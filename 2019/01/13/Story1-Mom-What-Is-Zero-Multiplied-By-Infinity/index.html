@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport">
+  <meta name="description" content="ProjectMoonPwn">
+  <meta name="keyword" content="hexo-theme, vuejs">
+  
+    <link rel="shortcut icon" href="/css/images/logo.png">
+  
+  <title>
+    
+      Story1 Mom What Is Zero Multiplied By Infinity | Project Moon
+    
+  </title>
+  <link href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="//cdn.bootcss.com/nprogress/0.2.0/nprogress.min.css" rel="stylesheet">
+  <link href="//cdn.bootcss.com/highlight.js/9.12.0/styles/tomorrow.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/plugins/gitment.css">
+  <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+  <script src="//cdn.bootcss.com/geopattern/1.2.3/js/geopattern.min.js"></script>
+  <script src="//cdn.bootcss.com/nprogress/0.2.0/nprogress.min.js"></script>
+  <script src="/js/qrious.js"></script>
+<script src="/js/gitment.js"></script>
+  
+  
+    <!-- MathJax support START -->
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+        tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      });
+    </script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax(), i;
+        for (i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+        }
+      });
+    </script>
+    <script type="text/javascript" src="//cdn.bootcss.com/mathjax/2.7.1/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <!-- MathJax support END -->
+  
+
+
+</head>
+<div class="wechat-share">
+  <img src="/css/images/logo.png" />
+</div>
+
+  <body>
+    <header class="header fixed-header">
+  <div class="header-container">
+    <a class="home-link" href="/">
+      <div class="logo"></div>
+      <span>Project Moon</span>
+    </a>
+    <ul class="right-list">
+      
+        <li class="list-item">
+          
+            <a href="/" class="item-link">Home</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/archives/" class="item-link">Archives</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/about/" class="item-link">About</a>
+          
+        </li>
+      
+    </ul>
+    <div class="menu">
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </div>
+    <div class="menu-mask">
+      <ul class="menu-list">
+        
+          <li class="menu-item">
+            
+              <a href="/" class="menu-link">Home</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/archives/" class="menu-link">Archives</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/about/" class="menu-link">About</a>
+            
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</header>
+
+    <div id="article-banner">
+  <h2>Story1 Mom What Is Zero Multiplied By Infinity</h2>
+  <p class="post-date">2019-01-13</p>
+  <div class="arrow-down">
+    <a href="javascript:;"></a>
+  </div>
+</div>
+<main class="app-body flex-box">
+  <!-- Article START -->
+  <article class="post-article">
+    <section class="markdown-content"><p><strong>Author: Qixun Zhao(@S0rryMybad) of Qihoo 360 Vulcan Team</strong></p>
+<p>今天我们文章介绍的是CVE-2018-8391,对应的<a href="https://github.com/Microsoft/ChakraCore/pull/5688/commits/f12d847c3beff4c2722a650fa9ac2418de41fb14" target="_blank" rel="noopener">patch commit</a>. 这是一个关于Loop循环的越界读写漏洞,漏洞的成因十分有趣.我们都知道零乘以无限等于零,但是开发人员在写代码的时候忽略了这样的一种特殊情况.</p>
+<p>在这里我除了介绍漏洞本身以外,还介绍了在引入了Spectre Mitigation之后的一种通用的Array OOB RW利用方法.关于这个漏洞,我们还有后续的Story2.</p>
+<p><strong>实验环境: chakraCore-2018-8-15附近的commit</strong></p>
+<h3 id="0x0-关于Loop的优化"><a href="#0x0-关于Loop的优化" class="headerlink" title="0x0 关于Loop的优化"></a>0x0 关于Loop的优化</h3><p>在之前的<a href="https://blogs.projectmoon.pw/2018/10/26/Chakra-JIT-Loop-LandingPad-ImplicitCall-Bypass/">文章</a>中我们已经简单介绍过关于Loop的优化,在编译器的优化过程中,我们需要把很多在Loop中不需要变化的指令hoist到LandingPad中,不然每次循环会执行很多没必要的指令.而在针对数组的边界检查中,有一种特殊的优化处理方法,这种优化是针对在循环inductionVariable并且用inductionVariable进行数组访问的情况.inductionVariable就是循环中的自变量.举个例子最直接:<br><img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/1.png"></p>
+<p>这里i就是inductionVariable,并且arr2用i进行数组访问.优化的详情在doLowerBoundCheck和doUpperBoundCheck这两个函数中.这里用doUpperBoundCheck作为例子.</p>
+<img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/2.png">
+<p>我们可以看到最下面有一个|CreateBoundsCheckInstr|的函数,用于生成一个boundcheck指令,用于检查|indexSym &lt;= headSegmentLength + offset (src1 &lt;= src2 + dst)|(注释已经很清楚).只需要通过这个检查,在下面的循环中就不会再有任何边界检查,因为已经hoist到LandingPad中,问题的关键就出在这个边界检查中.所以关键是这个检查是怎么保证在循环中数组的访问一定不会发生越界呢?  <br><br>HeadSegmentLength很清楚就是数组的长度,问题就在于这个indexSym是怎么得来的,通过阅览代码我们可以发现是在上面的函数|GenerateSecondaryInductionVariableBound|(生成的hoistInfo.IndexSym最终用于初始化lowerBound这个Opnd).</p>
+<h3 id="0x1-GenerateSecondaryInductionVariableBound的计算方法"><a href="#0x1-GenerateSecondaryInductionVariableBound的计算方法" class="headerlink" title="0x1 GenerateSecondaryInductionVariableBound的计算方法"></a>0x1 GenerateSecondaryInductionVariableBound的计算方法</h3><p>这个函数根据字面意思已经很清楚,就是计算inductionVariable的取值范围,只有inductionVariable的最大值少于HeadSegmentLength,循环中的数组访问必定不会越界.<br>至于计算的方法其实代码的注释已经十分清楚,下面我截取代码的注释来解释:</p>
+<img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/3.png">
+<p>inductionVariable就是我们i的初始化值,也就是我们上图的start,而loopCountMinusOne的计算方法在GenerateLoopCount函数中:<br><img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/4.png"></p>
+<p>在这里我用我小学毕业的数学知识把这个公式变换一下,得到如下的等式,当然要注意运算符号的顺序: (left - right + offset) / minMagnitudeChange * maxMagnitudeChange + inductionVariable<br>这里简单结合js代码介绍一下各个变量的含义:<br>函数中:</p>
+<img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/5.png">
+<p>Left对应的是end变量,right对应的是start,至于offset我们不用太在乎,如果判断条件是|i&lt;end|,则offset是-1,如果是|i&lt;=end|,则offset是0,对我们影响都不大.minMagnitudeChange是自变量在每一次循环中可能增加的最小值,这里是1(也就是if条件不成立的时候),同理maxMagnitudeChange 是可能增加的最大值,这里是0x1001,也就是if条件成立的时候,inductionVariable我们上面已经提到,也就是start,最终得到的公式与Opcode如下:</p>
+<img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/6.png">
+<p>结合我们文章的题目,聪明的读者肯定已经想到问题出在哪里.</p>
+<h3 id="0x2-Mom-零乘以无限等于多少"><a href="#0x2-Mom-零乘以无限等于多少" class="headerlink" title="0x2 Mom,零乘以无限等于多少?"></a>0x2 Mom,零乘以无限等于多少?</h3><p>上述的公式在计算i的取值范围的时候已经十分保守了,因为没可能每一次循环i都是增加最大值,但是它忽略了一种特殊情况:zero.当(end- start - 1) / 1等于0的时候,无论它后面乘以多大的数,结果都是0,最后边界检查就是只需要start &lt; headSegmentLength即可,而这个边界检查是不安全的(试想maxMagnitudeChange 远远大于headSegmentLength).</p>
+<p>有了越界读写的能力,下一步就是如何利用了,chakraCore在这个<a href="https://github.com/Microsoft/ChakraCore/commit/e664e1809fdc79dc27e426f986d061a85e89d261#diff-24781bfa8dd1a4dfe06fdd122676b9c1" target="_blank" rel="noopener">commit</a>中加入了一个mitigation, 这个commit简单来说在每一次数组访问的时候都会再次检查index是否少于数组的长度,如果不少于就直接crash,本来是用于防御Spectre,但是也把这些越界读写漏洞堵住了.换句话说,即使bypass了boundcheck,还要这些mask指令需要bypass.在刚引入的时候,很多人都觉得这种越界读写的漏洞不能再利用了. <br><br>这些指令的引入是十分拖累速度的,千辛万苦才消去了boundcheck的检查,又引入这个措施等于boundcheck的消去毫无意义,特别是在Loop中,每一次的循环都要运行这些没必要的mask指令,因此微软很快就引入了一个优化措施,在某些情况下hoist这些mask指令到循环外.由于这个优化措施比较复杂,这里只能简单介绍一下,它存在于Backward阶段的processBlock中,相关代码如下:</p>
+<img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/7.png">
+<p>首先遍历所有的opnd,查看这个opnd的有没有type-specialized,这里我们可以理解成有没有针对特定类型的优化,例如Float64等等,如果没有则记录下这个Sym的id,记录下的id最终在这里进行判断:</p>
+<img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/8.png">
+<p>如果这里满足两个条件,如果是LdElemI_A指令并且之前没有把Opnd的Sym记录下来,则把这个指令SetIsSafeToSpeculate(true);意思是不需要添加mask指令,最终在一个air block中加入防御指令:</p>
+<img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/9.png">
+<p>这个指令是架构相关的,不同架构有不同实现,这里与我们讨论的无关,不再展开.<br>换句话说,第一数组的访问必须在loop里面,触发它的loop优化机制,第二我们只能进行数组的load并且数组是int32类型或者float64类型,则我们可以把mask指令hoist到loop外.但是单单有这样的越界读(除非再多一个object数组的越界读)是不够的,我们需要更多的东西去RCE.</p>
+<h3 id="0x3-Hi-MissingValue-Again"><a href="#0x3-Hi-MissingValue-Again" class="headerlink" title="0x3 Hi, MissingValue Again"></a>0x3 Hi, MissingValue Again</h3><p>有了越界读,我们是可以越界读取一个missingValue的值的,只要我们首先初始化一个数组,然后把这个数组的length重新设置,例如:<br><img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/10.png"><br>则在它的index  4的地方有一个missingValue,同时也满足了HasNoMissingValue为true,如果不满足在后续我们JIT取出该值的时候是要bailout的,内存区域如下:<br><img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/11.png"><br>这时候如果我们能off by one index,我们就能读取到这个missingValue,然后我们可以用这个missingValue创建一个evil Array:HasNoMissingValue为true,但是headSegment中带有missingValue,最终创建evil Array的PoC如下:<br><img src="/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/12.png"></p>
+<p>有了这样的数组,离RCE还远吗,网上已经有大量的利用例子.可以参考我们的<a href="https://blogs.projectmoon.pw/2018/08/17/Edge-InlineArrayPush-Remote-Code-Execution/">第一篇文章</a>或者<a href="https://bugs.chromium.org/p/project-zero/issues/detail?id=1581&amp;can=1&amp;q=owner%3Alokihardt%40google.com&amp;colspec=ID%20Status%20Restrict%20Reported%20Vendor%20Product%20Finder%20Summary&amp;start=100&amp;desc=2" target="_blank" rel="noopener">project-zero</a> 或者 From zero to zero day <br><br>剩下的就作为读者的练习吧.</p>
+<h2 id="0x4-总结"><a href="#0x4-总结" class="headerlink" title="0x4 总结"></a>0x4 总结</h2><p>零乘以无限等于零</p>
+</section>
+    <!-- Tags START -->
+    
+    <!-- Tags END -->
+    <!-- NAV START -->
+    
+  <div class="nav-container">
+    <!-- reverse left and right to put prev and next in a more logic postition -->
+    
+      <a class="nav-left" href="/2018/11/30/A-Late-Kernel-Bug-Type-Confusion-in-NECP/">
+        <span class="nav-arrow">← </span>
+        
+          A Late Kernel Bug: Type Confusion in NECP
+        
+      </a>
+    
+    
+  </div>
+
+    <!-- NAV END -->
+    <!-- 打赏 START -->
+    
+    <!-- 打赏 END -->
+    <!-- 二维码 START -->
+    
+    <!-- 二维码 END -->
+    
+      <!-- No Comment -->
+    
+  </article>
+  <!-- Article END -->
+  <!-- Catalog START -->
+  
+    <aside class="catalog-container">
+  <div class="toc-main">
+    <strong class="toc-title">Catalog</strong>
+    
+      <ol class="toc-nav"><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#0x0-关于Loop的优化"><span class="toc-nav-text">0x0 关于Loop的优化</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#0x1-GenerateSecondaryInductionVariableBound的计算方法"><span class="toc-nav-text">0x1 GenerateSecondaryInductionVariableBound的计算方法</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#0x2-Mom-零乘以无限等于多少"><span class="toc-nav-text">0x2 Mom,零乘以无限等于多少?</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#0x3-Hi-MissingValue-Again"><span class="toc-nav-text">0x3 Hi, MissingValue Again</span></a></li></ol></li><li class="toc-nav-item toc-nav-level-2"><a class="toc-nav-link" href="#0x4-总结"><span class="toc-nav-text">0x4 总结</span></a>
+    
+  </div>
+</aside>
+  
+  <!-- Catalog END -->
+</main>
+
+<script>
+  (function () {
+    var url = 'blogs.projectmoon.pw/2019/01/13/Story1-Mom-What-Is-Zero-Multiplied-By-Infinity/';
+    var banner = 'undefined'
+    if (banner !== '' && banner !== 'undefined' && banner !== 'null') {
+      $('#article-banner').css({
+        'background-image': 'url(' + banner + ')'
+      })
+    } else {
+      $('#article-banner').geopattern(url)
+    }
+    $('.header').removeClass('fixed-header')
+
+     // error image
+    $(".markdown-content img").on('error', function() {
+      $(this).attr('src', 'http://file.muyutech.com/error-img.png')
+      $(this).css({
+        'cursor': 'default'
+      })
+    })
+
+    // zoom image
+    $(".markdown-content img").on('click', function() {
+      var src = $(this).attr('src')
+      if (src !== 'http://file.muyutech.com/error-img.png') {
+        var imageW = $(this).width()
+        var imageH = $(this).height()
+        
+        var zoom = ($(window).width() * 0.95 / imageW).toFixed(2)
+        zoom = zoom < 1 ? 1 : zoom
+        zoom = zoom > 2 ? 2 : zoom
+        var transY = (($(window).height() - imageH) / 2).toFixed(2)
+
+        $('body').append('<div class="image-view-wrap"><div class="image-view-inner"><img src="'+ src +'" /></div></div>')
+        $('.image-view-wrap').addClass('wrap-active')
+        $('.image-view-wrap img').css({
+          'width': `${imageW}`,
+          'transform': `translate3d(0, ${transY}px, 0) scale3d(${zoom}, ${zoom}, 1)`
+        })
+        $('html').css('overflow', 'hidden')
+
+        $('.image-view-wrap').on('click', function() {
+          $(this).remove()
+          $('html').attr('style', '')
+        })
+      }
+    })
+
+    // qrcode
+    var qr = new QRious({
+      element: document.getElementById('share-qrcode'),
+      value: document.location.href
+    });
+
+    // gitment
+    var gitmentConfig = "ProjectMoonPwn";
+    if (gitmentConfig !== 'undefined') {
+      var gitment = new Gitment({
+        id: "Story1 Mom What Is Zero Multiplied By Infinity",
+        owner: "ProjectMoonPwn",
+        repo: "ProjectMoonPwn.github.io",
+        oauth: {
+          client_id: "fb487fd293d70aa12330",
+          client_secret: "9bfb5748d6481ed48ba725a75fe9fa83f87c0562"
+        },
+        theme: {
+          render(state, instance) {
+            const container = document.createElement('div')
+            container.lang = "en-US"
+            container.className = 'gitment-container gitment-root-container'
+            container.appendChild(instance.renderHeader(state, instance))
+            container.appendChild(instance.renderEditor(state, instance))
+            container.appendChild(instance.renderComments(state, instance))
+            container.appendChild(instance.renderFooter(state, instance))
+            return container;
+          }
+        }
+      })
+      gitment.render(document.getElementById('comments'))
+    }
+  })();
+</script>
+
+    <div class="scroll-top">
+  <span class="arrow-icon"></span>
+</div>
+    <footer class="app-footer">
+  <p class="copyright">
+    &copy; 2019 | ProjectMoon
+  </p>
+</footer>
+
+<script>
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+</script>
+<script>
+  async("//cdn.bootcss.com/fastclick/1.0.6/fastclick.min.js", function(){
+    FastClick.attach(document.body);
+  })
+</script>
+
+<script>
+  var hasLine = 'true';
+  async("//cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js", function(){
+    $('figure pre').each(function(i, block) {
+      var figure = $(this).parents('figure');
+      if (hasLine === 'false') {
+        figure.find('.gutter').hide();
+      }
+      var lang = figure.attr('class').split(' ')[1] || 'code';
+      var codeHtml = $(this).html();
+      var codeTag = document.createElement('code');
+      codeTag.className = lang;
+      codeTag.innerHTML = codeHtml;
+      $(this).attr('class', '').empty().html(codeTag);
+      figure.attr('data-lang', lang.toUpperCase());
+      hljs.highlightBlock(block);
+    });
+  })
+</script>
+<!-- Baidu Tongji -->
+
+<script src="/js/script.js"></script>
+
+  </body>
+</html>
